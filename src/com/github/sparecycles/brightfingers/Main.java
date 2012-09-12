@@ -1,7 +1,6 @@
 package com.github.sparecycles.brightfingers;
 
 import java.util.ArrayList;
-import java.util.Stack;
 import android.app.Activity;
 import android.content.pm.ActivityInfo;
 import android.graphics.Canvas;
@@ -9,8 +8,7 @@ import android.graphics.Paint;
 import android.hardware.SensorManager;
 import android.os.Bundle;
 
-import com.github.sparecycles.brightfingers.Main.MyPointer.Record;
-import com.github.sparecycles.util.input.Pointer;
+import com.github.sparecycles.util.input.Touch;
 import com.github.sparecycles.util.input.Sensory;
 import com.github.sparecycles.util.view.CanvasBuffer;
 import com.github.sparecycles.util.view.Screen;
@@ -19,7 +17,7 @@ public class Main extends Activity {
 	Screen screen;
 	boolean needDraw;
 	boolean noCursors = true;
-	Pointer.Manager<MyPointer> touchInput;
+	Touch<MyFinger> touchInput;
 	float erase;
 	
 	Sensory.Accelerometer accelerometer = new Sensory.Accelerometer(this, SensorManager.SENSOR_DELAY_UI,
@@ -45,23 +43,24 @@ public class Main extends Activity {
 		
 		paint.setColor(0x40CCCCCC);
 		
-		for(MyPointer pointer : touchInput.values()) {
-			ArrayList<Record> points = pointer.locations;
+		for(MyFinger pointer : touchInput.values()) {
+			MyFinger finger = (MyFinger)pointer;
+			ArrayList<MyFinger.Record> points = finger.locations;
 			
 			if(points.isEmpty())
 				continue;
 			
-			MyPointer.Record start = points.get(0);
-			paint.setColor(pointer.color);
+			MyFinger.Record start = points.get(0);
+			paint.setColor(finger.color);
 			
-			for(MyPointer.Record record : points.subList(1, points.size())) {
+			for(MyFinger.Record record : points.subList(1, points.size())) {
 				float stroke_width = record.pressure*30;
 				paint.setStrokeWidth(stroke_width);
 				buffered.drawLine(start.x, start.y, record.x, record.y, paint);
 				start = record;
 			}
 			
-			for(MyPointer.Record record : points) {
+			for(MyFinger.Record record : points) {
 				float stroke_width = record.pressure*30/2;
 				buffered.drawCircle(record.x, record.y, stroke_width, paint);
 			}
@@ -89,11 +88,11 @@ public class Main extends Activity {
 		
 		paint.setStrokeWidth(1);
 		
-		for(MyPointer pointer : touchInput.values()) {
-			ArrayList<Record> points = pointer.locations;
+		for(MyFinger finger : touchInput.values()) {
+			ArrayList<MyFinger.Record> points = finger.locations;
 			if(points.isEmpty()) continue;
-			MyPointer.Record cursor = points.get(0);
-			paint.setColor(pointer.color);
+			MyFinger.Record cursor = points.get(0);
+			paint.setColor(finger.color);
 			paint.setAlpha((int)(256*cursor.pressure));
 			canvas.drawLine(0, cursor.y, canvas.getWidth(), cursor.y, paint);
 			canvas.drawLine(cursor.x, 0, cursor.x, canvas.getHeight(), paint);
@@ -102,8 +101,9 @@ public class Main extends Activity {
 	
 	static final java.util.Random random = new java.util.Random();
 
-	class MyPointer extends Pointer {
+	public class MyFinger implements Touch.Finger {
 		int color;
+		ArrayList<Record> locations = new ArrayList<Record>();
 		
 		class Record {
 			int x, y;
@@ -113,13 +113,12 @@ public class Main extends Activity {
 				this.y = y;
 				this.pressure = pressure;
 			}
-		};
-		
-		ArrayList<Record> locations = new ArrayList<Record>();
+		};		
 
 		@Override
 		public void cancel() {
-			
+			locations.clear();
+			Main.this.needDraw = true;			
 		}
 
 		@Override
@@ -129,8 +128,7 @@ public class Main extends Activity {
 		
 		@Override
 		public void release(int x, int y, float pressure) {
-			locations.clear();
-			Main.this.needDraw = true;
+			cancel();
 		}
 
 		@Override
@@ -156,20 +154,11 @@ public class Main extends Activity {
 			}
 		});
 		
-		touchInput = new Pointer.Manager<MyPointer>(screen, new Pointer.Factory<MyPointer>() {
-			Stack<MyPointer> pointers = new Stack<MyPointer>();
-			
+		touchInput = new Touch.Multi<MyFinger>() {
 			@Override
-			public MyPointer touch(int x, int y) {
-				MyPointer pointer = !pointers.empty() ? pointers.pop() : new MyPointer();
-				return pointer;
-			}
-
-			@Override
-			public void recycle(MyPointer pointer) {
-				pointers.push(pointer);
-			}
-		});
+			protected MyFinger make() { return new MyFinger(); }
+			{ feel(screen); }
+		};
 	}
 	
 	@Override
